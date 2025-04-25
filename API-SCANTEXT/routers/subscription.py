@@ -40,3 +40,18 @@ def activate_subscription_from_payment(user_id: int, payment_id: int, db: Sessio
 def activate_subscription(user_id: int, payment_id: int, db: Session = Depends(get_db)):
     activate_subscription_from_payment(user_id=user_id, payment_id=payment_id, db=db)
     return {"message": "Подписка успешно активирована"}
+
+@router.get("/subscription-info")
+def get_subscription_info(login: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(login=login).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_sub = db.query(UserSubscription).filter_by(user_id=user.id, is_active=True).first()
+    if not user_sub:
+        return {"subscription_type": "None", "remaining_scans": 0}
+
+    return {
+        "subscription_type": user_sub.subscription_type,
+        "remaining_scans": user_sub.remaining_scans
+    }

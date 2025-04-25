@@ -8,6 +8,8 @@ from db.database import get_db
 from models.user_models import User
 from models.upload_models import Upload
 from schemas.upload_schemas import UploadOut
+from models.subscription_models import UserSubscription, Subscription
+
 
 router = APIRouter()
 UPLOAD_FOLDER = "uploads"
@@ -45,21 +47,37 @@ def scan_image(upload_id: int = Form(...), db: Session = Depends(get_db)):
     if not upload:
         raise HTTPException(status_code=404, detail="Upload not found")
 
+    user = upload.user  # получаем пользователя через relationship
+
+    # Проверка лимита сканирований
+    user_sub = db.query(UserSubscription).filter_by(user_id=user.id, is_active=True).first()
+    if not user_sub or user_sub.remaining_scans <= 0:
+        raise HTTPException(status_code=403, detail="Лимит сканирований исчерпан")
+
+    user_sub.remaining_scans -= 1
+
     file_path = os.path.join(UPLOAD_FOLDER, upload.filename)
     with open(file_path, "rb") as f:
         image_bytes = f.read()
-        
-#        Проверка лимита сканирований по подписке
-#user_sub = db.query(UserSubscription).filter_by(user_id=user.id, is_active=True).first()
-#if user_sub and user_sub.remaining_scans > 0:
-#    user_sub.remaining_scans -= 1
 
-    response = requests.post("https://fastapitext.fly.dev/extract-text/", files={"image": ("file.jpg", image_bytes)})
+    response = requests.post(
+    "https://fastapitext.fly.dev/extract-text/",
+    files={"file": ("file.jpg", image_bytes)}
+)
     text = response.json().get("text", "")
+    print("📩 Ответ от OCR API:", response.json())
+
 
     upload.recognized_text = text
     db.commit()
-    return {"recognized_text": text}
+
+    return {
+        "recognized_text": text,
+        "subscription_type": user_sub.subscription.name,
+        "remaining_scans": user_sub.remaining_scans
+    }
+
+
 
 @router.get("/uploads/by-user", response_model=list[UploadOut])
 def get_uploads_by_user(login: str, db: Session = Depends(get_db)):

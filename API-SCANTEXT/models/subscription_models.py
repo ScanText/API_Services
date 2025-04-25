@@ -26,7 +26,7 @@ class UserSubscription(Base):
     remaining_scans = Column(Integer)
     is_active = Column(Boolean, default=True)
     auto_renew = Column(Boolean, default=False)
-    subscription = relationship("Subscription", backref="user_subscriptions", cascade="all, delete")
+    subscription = relationship("Subscription", back_populates="user_subscriptions", cascade="all, delete")
     payment_id = Column(Integer, ForeignKey("payments.id"), nullable=True)
     payment = relationship("Payment", backref="user_subscription")
 

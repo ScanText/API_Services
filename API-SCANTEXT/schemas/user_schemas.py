@@ -29,11 +29,14 @@ class UserOut(BaseModel):
     id: int
     login: str
     email: str
-    registered_at: datetime
-    role: Optional[str] = "user"
-    is_blocked: Optional[bool] = False
-    active_subscription: Optional[SubscriptionShort] = None
+    role: str
+    is_blocked: bool
+    subscription_type: Optional[str] = None
+    remaining_scans: Optional[int] = None
+#     registered_at: datetime
+#    role: Optional[str] = "user"
+#   active_subscription: Optional[SubscriptionShort] = None
 
     class Config:
-        from_attributes = True
+        from_attributes = True  # заменяет устаревший orm_mode
 

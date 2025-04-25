@@ -2,6 +2,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Literal
+from enum import Enum
 
 class SubscriptionBase(BaseModel):
     name: str
@@ -35,3 +36,7 @@ class UserSubscriptionOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+class SubscriptionStatus(str, Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"

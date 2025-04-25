@@ -9,6 +9,17 @@ from db.database import SessionLocal
 from utils.security import verify_password, hash_password
 from models.user_models import User
 from schemas.user_schemas import PasswordChange
+import uuid
+from datetime import datetime
+import requests
+
+from models.upload_models import Upload
+from models.subscription_models import UserSubscription
+from models.subscription_models import Subscription
+
+from schemas.subscription_schemas import SubscriptionStatus
+
+
 
 router = APIRouter()
 
@@ -27,10 +38,28 @@ def login_user(user: UserLogin, db: Session = Depends(get_db)):
         db_user = user_crud.get_user_by_login(db, user.login)
         if not db_user or not verify_password(user.password, db_user.password_hash):
             raise HTTPException(status_code=401, detail="Неверный логин или пароль")
-        return db_user
+
+        user_sub = (
+            db.query(UserSubscription)
+            .join(Subscription)
+            .filter(UserSubscription.user_id == db_user.id, UserSubscription.is_active == True)
+            .first()
+        )
+
+        return UserOut(
+            id=db_user.id,
+            login=db_user.login,
+            email=db_user.email,
+            role=db_user.role,
+            is_blocked=db_user.is_blocked,
+            subscription_type=user_sub.subscription.name if user_sub else "none",
+            remaining_scans=user_sub.remaining_scans if user_sub else 0
+        )
+
     except Exception as e:
         print("❌ Ошибка при входе:", e)
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+
 
 @router.post("/change-password")
 def change_password(data: PasswordChange, db: Session = Depends(get_db)):
@@ -125,3 +154,57 @@ def scan_image(upload_id: int, db: Session = Depends(get_db)):
     db.commit()
 
     return {"recognized_text": text}
+
+@router.get("/user/{user_id}/subscription", response_model=SubscriptionStatus)
+def get_user_subscription(user_id: int, db: Session = Depends(get_db)):
+    user_sub = db.query(UserSubscription).filter_by(user_id=user_id, is_active=True).first()
+    if not user_sub:
+        raise HTTPException(status_code=404, detail="Активная подписка не найдена")
+    return {
+        "subscription_type": user_sub.subscription.name,
+        "remaining_scans": user_sub.remaining_scans
+    }
+
+@router.get("/subscription-status")
+def subscription_status(login: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(login=login).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    active_sub = (
+    db.query(UserSubscription)
+    .join(User)
+    .join(Subscription)
+    .filter(User.login == login, UserSubscription.is_active == True)
+    .first()
+    )
+    if not active_sub:
+        return {"subscription_type": "none", "remaining_scans": 0}
+
+    return {
+        "subscription_type": active_sub.subscription.name,
+        "remaining_scans": active_sub.remaining_scans
+    }
+
+@router.get("/user_info/{login}", response_model=UserOut)
+def get_user_info(login: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(login=login).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    user_sub = (
+        db.query(UserSubscription)
+        .join(Subscription)
+        .filter(UserSubscription.user_id == user.id, UserSubscription.is_active == True)
+        .first()
+    )
+
+    return UserOut(
+        id=user.id,
+        login=user.login,
+        email=user.email,
+        role=user.role,
+        is_blocked=user.is_blocked,
+        subscription_type=user_sub.subscription.name if user_sub else "none",
+        remaining_scans=user_sub.remaining_scans if user_sub else 0
+    )
