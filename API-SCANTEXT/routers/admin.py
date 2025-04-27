@@ -60,3 +60,9 @@ def get_all_admins(db: Session = Depends(get_db)):
 def get_admin_stats(admin_id: int, db: Session = Depends(get_db)):
     count = db.query(func.count(admin_models.Upload.id)).filter(admin_models.Upload.admin_id == admin_id).scalar()
     return {"upload_count": count}
+
+#
+@router.post("/activate-subscription")
+def activate_subscription(user_id: int, payment_id: int, db: Session = Depends(get_db)):
+    activate_subscription_from_payment(user_id=user_id, payment_id=payment_id, db=db)
+    return {"message": "Подписка успешно активирована"}

@@ -40,3 +40,7 @@ class UserSubscriptionOut(BaseModel):
 class SubscriptionStatus(str, Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
+
+class UpdateSubscriptionRequest(BaseModel):
+    login: str
+    new_status: str

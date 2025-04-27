@@ -6,11 +6,12 @@ from typing import List
 from crud import user_crud
 from schemas.user_schemas import UserLogin, UserOut, UserCreate
 from db.database import SessionLocal
+from db.database import get_db
 from utils.security import verify_password, hash_password
 from models.user_models import User
 from schemas.user_schemas import PasswordChange
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 
 from models.upload_models import Upload
@@ -18,7 +19,7 @@ from models.subscription_models import UserSubscription
 from models.subscription_models import Subscription
 
 from schemas.subscription_schemas import SubscriptionStatus
-
+from schemas.subscription_schemas import UpdateSubscriptionRequest
 
 
 router = APIRouter()
@@ -91,9 +92,25 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     return user_crud.create_user(db, user)
 
 # 📋 Получить всех пользователей (используется в React)
+# @router.get("/", response_model=List[UserOut])
+# def get_users(db: Session = Depends(get_db)):
+#     return db.query(User).all()
+
 @router.get("/", response_model=List[UserOut])
 def get_users(db: Session = Depends(get_db)):
-    return db.query(User).all()
+    users = db.query(User).all()
+    result = []
+    for user in users:
+        active_sub = (
+            db.query(UserSubscription)
+            .filter_by(user_id=user.id, is_active=True)
+            .join(Subscription)
+            .first()
+        )
+        user.subscription_status = active_sub.subscription.name if active_sub else "free"
+        result.append(user)
+    return result
+
 
 @router.delete("/{user_id}")
 def delete_user(user_id: int, db: Session = Depends(get_db)):
@@ -146,7 +163,12 @@ def scan_image(upload_id: int, db: Session = Depends(get_db)):
         image_bytes = f.read()
 
     # Отправляем в внешний OCR
-    response = requests.post("https://fastapitext.fly.dev/extract-text/", files={"image": ("file.jpg", image_bytes)})
+    #response = requests.post("https://fastapitext.fly.dev/extract-text/", files={"image": ("file.jpg", image_bytes)})
+    response = requests.post("https://fastapitext-black-feather-5039.fly.dev/extract-text/", files={"file": ("file.jpg", image_bytes)})
+    print("📩 Ответ от сервера:", response.json())
+    print("📦 Ответ:", response.text)
+    print(response.headers)
+
     text = response.json().get("text", "")
 
     # Обновляем запись
@@ -208,3 +230,28 @@ def get_user_info(login: str, db: Session = Depends(get_db)):
         subscription_type=user_sub.subscription.name if user_sub else "none",
         remaining_scans=user_sub.remaining_scans if user_sub else 0
     )
+
+@router.post("/update-subscription")
+def update_user_subscription(data: UpdateSubscriptionRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(login=data.login).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    new_sub = db.query(Subscription).filter_by(name=data.new_status).first()
+    if not new_sub:
+        raise HTTPException(status_code=404, detail="Подписка не найдена")
+
+    db.query(UserSubscription).filter_by(user_id=user.id, is_active=True).update({"is_active": False})
+
+    new_user_sub = UserSubscription(
+        user_id=user.id,
+        subscription_id=new_sub.id,
+        start_date=datetime.utcnow(),
+        end_date=datetime.utcnow() + timedelta(days=new_sub.duration_days),
+        remaining_scans=new_sub.scan_limit,
+        is_active=True
+    )
+    db.add(new_user_sub)
+    db.commit()
+
+    return {"message": f"Подписка пользователя {data.login} обновлена до {data.new_status}"}

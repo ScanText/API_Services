@@ -10,6 +10,8 @@ from models.user_models import User
 from models.payment_models import Payment
 from schemas.subscription_schemas import SubscriptionOut, SubscriptionShort
 from schemas.user_schemas import UserOut
+from sqlalchemy.orm import joinedload
+
 
 
 router = APIRouter()
@@ -45,13 +47,20 @@ def activate_subscription(user_id: int, payment_id: int, db: Session = Depends(g
 def get_subscription_info(login: str, db: Session = Depends(get_db)):
     user = db.query(User).filter_by(login=login).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
 
-    user_sub = db.query(UserSubscription).filter_by(user_id=user.id, is_active=True).first()
+    user_sub = (
+        db.query(UserSubscription)
+        .options(joinedload(UserSubscription.subscription))  # подтягиваем связку
+        .filter_by(user_id=user.id, is_active=True)
+        .first()
+    )
+
     if not user_sub:
-        return {"subscription_type": "None", "remaining_scans": 0}
+        return {"subscription_type": "none", "remaining_scans": 0}
 
     return {
-        "subscription_type": user_sub.subscription_type,
+        "subscription_type": user_sub.subscription.name,
         "remaining_scans": user_sub.remaining_scans
     }
+

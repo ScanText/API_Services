@@ -20,4 +20,18 @@ class PaymentOut(BaseModel):
     subscription_id: Optional[int]
 
     class Config:
-        orm_mode = True
+        model_config = {
+            "from_attributes": True
+        }
+
+class PaymentSuccessRequest(BaseModel):
+    orderId: str
+
+class CreatePaymentRequest(BaseModel):
+
+    user_id: int
+    subscription_id: int
+    amount: int
+
+class ConfirmPaymentRequest(BaseModel):
+    user_id: int
